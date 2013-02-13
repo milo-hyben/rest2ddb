@@ -184,22 +184,6 @@ ddb_scan_mockup(<<"task">>,
 	]
 }.
 
-
-%ddb_find_mockup(<<"strategy">>, {<<"1">>, 'number'}, {'equal', 'number', [<<"2">>]}) ->
-%{ok,[
-		%{<<"ConsumedCapacityUnits">>,0.5},
-		%{<<"Count">>,1},
-		%{<<"Items">>,[
-			%[
-				%{<<"name">>,[{<<"S">>,<<"My Second Strategy">>}]},
-				%{<<"strategy_id">>,[{<<"N">>,<<"2">>}]},
-				%{<<"atts">>,[{<<"S">>,<<"some specific stuff 2">>}]},
-				%{<<"user_id">>,[{<<"N">>,<<"1">>}]}
-			%]
-		%]}
-	%]
-%}.
-
 ddb_find_mockup(<<"task">>, {<<"1">>, 'number'}, {'equal', 'number', [<<"2">>]}) ->
 {ok,[
 		{<<"ConsumedCapacityUnits">>,0.5},
@@ -264,7 +248,7 @@ ddb_describe_table(<<"task">>) ->
        {<<"TableName">>,<<"task">>},
        {<<"TableSizeBytes">>,0},
        {<<"TableStatus">>,<<"ACTIVE">>}]}]}.
-		
+
 
 %% mockup key information
 table_key_info("user.id")		-> {table,<<"user">>, {aws_base_attribute,<<"id">>,number}, {aws_base_attribute,undefined,undefined}};
