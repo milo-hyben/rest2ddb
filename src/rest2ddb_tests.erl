@@ -1,5 +1,5 @@
-%% @author milo
-%% @doc @todo Add description to bto_resource_handler.
+%% @author milo hyben
+%% @doc REST to DynamoDB interface - tests.
 
 -module(rest2ddb_tests).
 
@@ -21,7 +21,7 @@ rest2ddb_test_() ->
                  ),
 			meck:expect(ddb, describe_table,
                  fun rest2ddb_utils_mockups:ddb_describe_table/1
-                 ),               
+                 ),
 			meck:expect(ddb, scan,
                  fun rest2ddb_utils_mockups:ddb_scan_mockup/2
                  ),
@@ -42,7 +42,7 @@ rest2ddb_test_() ->
                  ),
 			meck:expect(ddb_iam, token,
                  fun (DurationInSeconds) -> {'ok', "AccessKeyId", "SecretAccessKey", "Token"} end
-                 )        
+                 )
   end,
   fun(_) ->
   		%% unload ddb
@@ -50,7 +50,7 @@ rest2ddb_test_() ->
       meck:unload(ddb_iam)
   end,
 	[
-   	
+
    	{"init_tables",
     	fun() ->
 			?assertEqual( ok, rest2ddb:init("AccessKeyId", "SecretAccessKey", 100, "Region")),
@@ -67,12 +67,12 @@ rest2ddb_test_() ->
     	fun() ->
 			%% set environment / global values
             application:set_env('rest2ddb', 'aws_tables', rest2ddb_utils_mockups:environment_mockup('aws_tables')),
-			application:set_env('rest2ddb', 'aws_tables_details', 
-								[ 
+			application:set_env('rest2ddb', 'aws_tables_details',
+								[
 									rest2ddb_utils_mockups:table_key_info("user.id"),
 									rest2ddb_utils_mockups:table_key_info("task.user_id, job_id")
 								]),
-								
+
 			?assertEqual(	{ok,[[
 									{<<"user_id">>,[{<<"N">>,<<"1">>}]},
 									{<<"job_id">>,[{<<"N">>,<<"2">>}]},
@@ -88,7 +88,7 @@ rest2ddb_test_() ->
 
     	end
    	}
-    
+
 	]
 }.
 
