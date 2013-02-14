@@ -87,7 +87,16 @@ rest2ddb_test_() ->
             ?assert(meck:validate(ddb_iam))
 
     	end
-   	}
+   	},
+
+    {"extracts",
+      fun() ->
+        ?assertEqual([{<<"fields">>,<<"firstname,lastname">>}], rest2ddb:extract_query(<<"user/1?fields=firstname,lastname">>)),
+        ?assertEqual([<<"user">>,<<"1">>], rest2ddb:extract_path(<<"user/1?fields=firstname,lastname">>))
+      end
+    },
+
+
 
 	]
 }.
