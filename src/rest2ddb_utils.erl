@@ -1,5 +1,6 @@
-%% @author milo
-%% @doc @todo Add description to bto_resource_handler.
+%% @author milo hyben
+%% @doc REST to DynamoDB interface - utility module.
+
 
 -module(rest2ddb_utils).
 
@@ -8,23 +9,40 @@
 %% ====================================================================
 
 -export([
-		find_resource/2,
+		get_resource/2,
+		put_resource/3,
+		post_resource/3,
+		patch_resource/3,
+		delete_resource/2,
 		match_resource_to_keys/3
 		]).
 
-find_resource(Resource, Parameters) ->
+get_resource(Resource, Parameters) ->
 	MatchedKeys = match_resource_to_keys(Resource, Parameters, []),
 	get_record(MatchedKeys, Parameters).
-	
+
+put_resource(Resource, Parameters, Attributes) ->
+	MatchedKeys = match_resource_to_keys(Resource, Parameters, []),
+	put_record(MatchedKeys, Parameters, Attributes).
+
+post_resource(Resource, Parameters, Attributes) ->
+	MatchedKeys = match_resource_to_keys(Resource, Parameters, []),
+	post_record(MatchedKeys, Parameters, Attributes).
+
+patch_resource(Resource, Parameters, Attributes) ->
+	MatchedKeys = match_resource_to_keys(Resource, Parameters, []),
+	patch_record(MatchedKeys, Parameters, Attributes).
+
+delete_resource(Resource, Parameters) ->
+	MatchedKeys = match_resource_to_keys(Resource, Parameters, []),
+	delete_record(MatchedKeys, Parameters).
 
 match_resource_to_keys([], _Parameters, Acc) -> Acc;
-
 match_resource_to_keys([Resource, Id | Next], Parameters, Acc) ->
 	case is_resource_a_table(Resource) of
 		true -> extract_resource_keys(extract_table(Resource, Acc), [Id | Next], Parameters, Acc);
 		_ -> {error,[]}  %% TODO check is Resource is not a column
 	end;
-	
 match_resource_to_keys([Resource], Parameters, Acc) ->
 	case is_resource_a_table(Resource) of
 		true -> extract_resource_keys(extract_table(Resource, Acc), Parameters, Acc);
@@ -35,14 +53,56 @@ match_resource_to_keys([Resource], Parameters, Acc) ->
 %% Internal functions
 %% ====================================================================
 
+%% get_record
+get_record([], _) -> {error, []};
+get_record([{TableName, KeyValues} | _T], Parameters) ->
+	BinTableName = binary:list_to_bin(TableName),
+	Keys = table_keys(BinTableName),
+	case length(Keys) == length(KeyValues) of
+		true  ->
+				%% we have enough info to use get/find
+				get_item('get', BinTableName, Keys, convert_to_bin(KeyValues, []), Parameters);
+		false ->
+				%scan
+				get_item('scan', BinTableName, Keys, convert_to_bin(KeyValues, []), Parameters)
+	end.
+
+%% put_record
+put_record([], _, _) -> {error, []};
+put_record([{TableName, KeyValues} | _T], Parameters, Attributes) ->
+	BinTableName = binary:list_to_bin(TableName),
+	Keys = table_keys(BinTableName),
+	{error, []}. %% TODO
+
+%% post_record
+post_record([], _, _) -> {error, []};
+post_record([{TableName, KeyValues} | _T], Parameters, Attributes) ->
+	BinTableName = binary:list_to_bin(TableName),
+	Keys = table_keys(BinTableName),
+	{error, []}. %% TODO
+
+%% patch_record
+patch_record([], _, _) -> {error, []};
+patch_record([{TableName, KeyValues} | _T], Parameters, Attributes) ->
+	BinTableName = binary:list_to_bin(TableName),
+	Keys = table_keys(BinTableName),
+	{error, []}. %% TODO
+
+%% delete_record
+delete_record([], _) -> {error, []};
+delete_record([{TableName, KeyValues} | _T], Parameters) ->
+	BinTableName = binary:list_to_bin(TableName),
+	Keys = table_keys(BinTableName),
+	{error, []}. %% TODO
+
 pattern_match_keys(_Pattern, [], Result) -> Result;
 pattern_match_keys(Pattern, [{K, V} | T], {Max, MaxLen, MaxPattern, MaxResult}) ->
 	case re:run(K,Pattern,[global,{capture,[1],list}]) of
  		{match,R} ->
 			case ((length(R) > Max) or ((length(R) == Max) and (length(lists:flatten(R)) > MaxLen))) of
-				true -> 
+				true ->
 					pattern_match_keys(Pattern, T, {length(R), length(lists:flatten(R)), Pattern, {K, V}});
-				_ -> 
+				_ ->
 					pattern_match_keys(Pattern, T, {Max, MaxLen, MaxPattern, MaxResult})
 	 		end;
  		_ -> pattern_match_keys(Pattern, T, {Max, MaxLen, MaxPattern, MaxResult})
@@ -66,7 +126,7 @@ concat_parameters_incl_table_keys([], Acc) -> Acc;
 concat_parameters_incl_table_keys([{Table, Keys} | T], Acc) ->
 	MergedKeys = lists:map(fun({K,V}) -> {Table++"|"++K, V} end, Keys),
 	concat_parameters_incl_table_keys(T, concat_parameters_key_value(MergedKeys, Acc)).
-	
+
 
 match_hashkey([{H, Pattern} | T], CombinedParams) ->
 	MatchedParams = pattern_match_keys(Pattern, CombinedParams),
@@ -74,7 +134,7 @@ match_hashkey([{H, Pattern} | T], CombinedParams) ->
 		{0,0,[],[]} -> match_hashkey(T, CombinedParams);
 		_ -> {H, MatchedParams}
 	end;
-	
+
 match_hashkey(_, _) -> {'none',{0, 0, [], []}}.
 
 
@@ -100,16 +160,16 @@ extract_key_value({ResourceString, Id, HashKeyName, RangeKeyName}, {'rangekey', 
 	[{ResourceString, [{HashKeyName, Id}, {RangeKeyName, Value}]}].
 
 %% try to match both hashkey and rangekey
-extract_key_value(  {ResourceString, 'none', HashKeyName, RangeKeyName}, 
-                    {'hashkey' , {_Max1, _MaxLen1, _Pattern1, {_KeyName1, Value1}}}, 
+extract_key_value(  {ResourceString, 'none', HashKeyName, RangeKeyName},
+                    {'hashkey' , {_Max1, _MaxLen1, _Pattern1, {_KeyName1, Value1}}},
                     {'rangekey', {_Max2, _MaxLen2, _Pattern2, {_KeyName2, Value2}}}) ->
 	[{ResourceString, [{HashKeyName, Value1}, {RangeKeyName, Value2}]}];
-    
-extract_key_value(  {ResourceString, 'none', HashKeyName, RangeKeyName}, 
-                    {'rangekey', {_Max1, _MaxLen1, _Pattern1, {_KeyName1, Value1}}}, 
+
+extract_key_value(  {ResourceString, 'none', HashKeyName, RangeKeyName},
+                    {'rangekey', {_Max1, _MaxLen1, _Pattern1, {_KeyName1, Value1}}},
                     {'hashkey', {_Max2, _MaxLen2, _Pattern2, {_KeyName2, Value2}}}) ->
 	[{ResourceString, [{HashKeyName, Value2}, {RangeKeyName, Value1}]}];
-    
+
 extract_key_value(TableInfo, {Key1, {Max1, MaxLen1, Pattern1, KeyValue1}}, {Key2, {Max2, MaxLen2, Pattern2, KeyValue2}}) ->
 	case ((Max1>Max2) or ((Max1==Max2) and (MaxLen1>MaxLen2))) of
 		true -> extract_key_value(TableInfo, {Key1, {Max1, MaxLen1, Pattern1, KeyValue1}});
@@ -136,9 +196,9 @@ match_hashkey_on_strings(Params, [{KeyType, KeyName} | T], {MaxKeyType, {MaxCoun
 	CombinedParams = [{KeyName,'none'}],
 	{CurrKeyType, {CurrCount, CurrLength, CurrPattern, CurrKeyValue}} = match_hashkey(Pattern, CombinedParams),
 	case ((CurrCount > MaxCount) or ((CurrCount == MaxCount) and (CurrLength>MaxLength))) of
-		true -> 
+		true ->
 			match_hashkey_on_strings(Params, T, {CurrKeyType, {CurrCount, CurrLength, CurrPattern, CurrKeyValue}});
-		_ -> 
+		_ ->
 			match_hashkey_on_strings(Params, T, {MaxKeyType, {MaxCount, MaxLength, MaxPattern, MaxKeyValue}})
 	end.
 
@@ -156,7 +216,7 @@ locate_the_most_prabable_key_values(Parameters, Acc, TableKeyPatterns, KeyPatter
 	{{KeyType, PossibleKey}, {KeyType2, PossibleKey2}}.
 
 resources_as_tables([], Acc) -> Acc;
-resources_as_tables([Resource | T], Acc) -> 
+resources_as_tables([Resource | T], Acc) ->
 	case is_resource_a_table(Resource) of
 		true -> resources_as_tables(T, [Resource]++Acc);
 		_ ->resources_as_tables(T, Acc)
@@ -172,7 +232,7 @@ extract_table(Resource, [{Table, _Keys} | _H]) ->
 						], []).
 
 
-extract_resource_keys([], _Parameters, Acc) -> Acc;	
+extract_resource_keys([], _Parameters, Acc) -> Acc;
 extract_resource_keys([Resource | T], Parameters, Acc) ->
 	ResourceString = binary:bin_to_list(Resource),
 	Keys = extract_names(table_keys(Resource), []),
@@ -182,15 +242,15 @@ extract_resource_keys([Resource | T], Parameters, Acc) ->
 		Patterns = create_list_of_regex_patterns([{'hashkey' , [ResourceString]}
 												, {'hashkey' , [HashKeyName]}
 												, {'hashkey' , [ResourceString, HashKeyName]}], []),
-												
+
 		{{KeyType, PossibleKey}, {KeyType2, PossibleKey2}} = locate_the_most_prabable_key_values(
-																Parameters, Acc, Patterns, 
+																Parameters, Acc, Patterns,
 																[{'hashkey' , HashKeyName}, {'hashkey' , ResourceString}]),
-																
+
 		case ((KeyType=='none') and (KeyType2=='none')) of
 		true ->
 				extract_resource_keys(T, Parameters, [{ResourceString, []}] ++ Acc);
-		_ ->						
+		_ ->
 				extract_resource_keys(T, Parameters, extract_key_value( {ResourceString, 'none', HashKeyName, 'none'}, {KeyType, PossibleKey}, {KeyType2, PossibleKey2}) ++ Acc)
 		end;
 	2 ->
@@ -201,21 +261,21 @@ extract_resource_keys([Resource | T], Parameters, Acc) ->
 												, {'rangekey', [ResourceString, RangeKeyName]}
 												, {'hashkey' , [HashKeyName]}
 												, {'hashkey' , [ResourceString, HashKeyName]}], []),
-												
+
 		{{KeyType, PossibleKey}, {KeyType2, PossibleKey2}} = locate_the_most_prabable_key_values(
-																Parameters, Acc, Patterns, 
+																Parameters, Acc, Patterns,
 																[{'hashkey' , HashKeyName}, {'rangekey', RangeKeyName}, {'hashkey' , ResourceString}]),
-		
+
 		case ((KeyType=='none') and (KeyType2=='none')) of
 		true ->
 				extract_resource_keys(T, Parameters, [{ResourceString, []}] ++ Acc);
-		_ ->						
+		_ ->
 				extract_resource_keys(T, Parameters, extract_key_value( {ResourceString, 'none', HashKeyName, RangeKeyName}, {KeyType, PossibleKey}, {KeyType2, PossibleKey2}) ++ Acc)
 		end
 	end.
-	
-	
-extract_resource_keys([], [], _Parameters, Acc) -> Acc;	
+
+
+extract_resource_keys([], [], _Parameters, Acc) -> Acc;
 extract_resource_keys([], [_Id |Next], Parameters, Acc) ->
 	match_resource_to_keys(Next, Parameters, Acc);
 extract_resource_keys([Resource | T], [Id |Next], Parameters, Acc) ->
@@ -233,30 +293,17 @@ extract_resource_keys([Resource | T], [Id |Next], Parameters, Acc) ->
 													, {'rangekey', [ResourceString, RangeKeyName]}
 													, {'hashkey' , [HashKeyName]}
 													, {'hashkey' , [ResourceString, HashKeyName]}], []),
-													
+
 			{{KeyType, PossibleKey}, {KeyType2, PossibleKey2}} = locate_the_most_prabable_key_values(
-																	Parameters, Acc, Patterns, 
+																	Parameters, Acc, Patterns,
 																	[{'hashkey' , HashKeyName}, {'rangekey', RangeKeyName}, {'hashkey' , ResourceString}]),
-			
+
 			case ((KeyType=='none') and (KeyType2=='none')) of
 			true -> %% value could not be matched, assume the id is a hashkey
 					extract_resource_keys(T, [Id |Next], Parameters, [{ResourceString, [{HashKeyName, binary:bin_to_list(Id)}]}] ++ Acc);
-			_ ->						
+			_ ->
 					extract_resource_keys(T, [Id |Next], Parameters, extract_key_value( {ResourceString, binary:bin_to_list(Id), HashKeyName, RangeKeyName}, {KeyType, PossibleKey}, {KeyType2, PossibleKey2}) ++ Acc)
 			end
-	end.
-
-get_record([], _) -> {error, []};
-get_record([{TableName, KeyValues} | _T], Parameters) -> 
-	BinTableName = binary:list_to_bin(TableName),
-	Keys = table_keys(BinTableName),
-	case length(Keys) == length(KeyValues) of
-		true  ->
-				%% we have enough info to use get/find
-				get_item('get', BinTableName, Keys, convert_to_bin(KeyValues, []), Parameters);
-		false ->
-				%scan
-				get_item('scan', BinTableName, Keys, convert_to_bin(KeyValues, []), Parameters)
 	end.
 
 extract_items([]) -> [];
@@ -264,11 +311,11 @@ extract_items([{<<"Items">>,R} | _T]) -> R;
 extract_items([{<<"Item">>,R} | _T]) -> [R];
 extract_items([_H | T]) -> extract_items(T).
 
-
 convert_to_bin([], Acc) -> Acc;
-convert_to_bin([{K, V} | T], Acc) -> 
+convert_to_bin([{K, V} | T], Acc) ->
 	convert_to_bin(T, [{binary:list_to_bin(K), binary:list_to_bin(V)}] ++ Acc).
-	
+
+% get_item
 get_item('scan', TableName, _Keys, KeyValues, Parameters) ->
 	Params = KeyValues ++ Parameters,
 	P = extract_fields('scan', Params,[]),
@@ -283,7 +330,7 @@ get_item('get', TableName, Keys, KeyValues, Parameters) when (length(Keys) == 1)
 	case ddb:get(TableName, ddb:key_value(KeyValue, KeyType), P) of
 		{ok, Results} -> {ok, extract_items(Results)};
 		_ -> {error, []}
-	end;	
+	end;
 get_item('get', TableName, Keys, KeyValues, _Parameters) when (length(Keys) == 2) ->
 	[{_RangeKeyName,RangeKeyType}, {_HashKeyName,HashKeyType}] = Keys,
 	[{_RangeKeyName,RangeKeyValue}, {_HashKeyName,HashKeyValue}] = KeyValues,
@@ -341,8 +388,6 @@ strings_to_bins(L) ->
 	lists:map(fun(X) -> binary:list_to_bin(X) end, L).
 
 %% extract_offset_key
-%% (HashKeyElement=S:Riley,RangeKeyElement=N:250)
-%% [{ "HashKeyElement":{"S":"Riley"}	, "RangeKeyElement":{"N":"250"} ]
 extract_offset_key(Value) ->
 	extract_offset_key(string:tokens(Value, ",)("), []).
 
@@ -378,8 +423,8 @@ pattern_match_keys_test() ->
     ?assertEqual({2,6,"(user|id)",{"user_id","1"}}, pattern_match_keys("(user|id)", [{"user_id", "1"}])),
     ?assertEqual({1,2,"(job|id)",{"user_id","1"}}, pattern_match_keys("(job|id)",  [{"user_id", "1"}]) ),
     ?assertEqual({2,5,"(job|id)",{"job_id","5"}}, pattern_match_keys("(job|id)",  [{"user_id", "1"}, {"job_id", "5"}]) ).
-    
-match_hashkey_test() ->    
+
+match_hashkey_test() ->
     ?assertEqual({'none',{0,0,[],[]}}
         ,match_hashkey([], [])),
     ?assertEqual({'none',{0,0,[],[]}}
@@ -399,7 +444,7 @@ match_hashkey_test() ->
     ?assertEqual({hashkey,{1,4,"(user)",{"user_id","1"}}}
         ,match_hashkey([{'hashkey',"(user)"}, {'hashkey',"(id|user)"}], [{"fields","name,id"}, {"user_id", "1"}, {"user_job","5"}, {"job_id","2"}])).
 
-create_a_regex_pattern_test() ->    
+create_a_regex_pattern_test() ->
     ?assertEqual("()", create_a_regex_pattern([],[])),
     ?assertEqual("(user)", create_a_regex_pattern(["user"],[])),
     ?assertEqual("(id|user)", create_a_regex_pattern(["user", "id"],[])),
@@ -410,7 +455,7 @@ create_list_of_regex_patterns_test() ->
     ?assertEqual([{'hash',"(user)"}], create_list_of_regex_patterns([{'hash',["user"]}],[])),
     ?assertEqual([{'range',"(id)"},{'hash',"(email|user)"}], create_list_of_regex_patterns([{'hash',["user","email"]},{'range',["id"]}],[])),
     ?assertEqual([{hashkey,"(id|user)"}], create_list_of_regex_patterns([{'hashkey' , ["user", "id"]}], []) ).
-   	
+
 extract_operator_test() ->
     ?assertEqual({<<"CONTAINS">>,<<"a">>}, extract_operator(<<"*a">>)),
     ?assertEqual({<<"EQ">>,<<"xyz">>}, extract_operator(<<"xyz">>)).
@@ -434,8 +479,8 @@ extract_keys_hashkey_rangekey_test() ->
         {aws_base_attribute,<<"job_id">>,number}}
     ],
     ?assertEqual([{<<"job_id">>,number},{<<"user_id">>,number}], extract_keys( tuple_to_list(lists:append(Details)), [])).
-	
-extract_fields_test() ->    
+
+extract_fields_test() ->
     ?assertEqual([{<<"AttributesToGet">>,[<<"name">>, <<"id">>]}]
                 ,extract_fields('scan',[{<<"fields">>,<<"name,id">>}],[])),
 
@@ -447,21 +492,21 @@ extract_fields_test() ->
                             ]
                     }]
                 ,extract_fields('scan',[{<<"name">>,<<"*Jo">>}],[])),
-                
+
     ?assertEqual([{<<"ScanFilter">>,[
                             { <<"surname">>, [{<<"AttributeValueList">>, [[{<<"S">>, <<"K">>}]]},{<<"ComparisonOperator">>, <<"CONTAINS">>}] },
                             { <<"name">>, [{<<"AttributeValueList">>, [[{<<"S">>, <<"Jo">>}]]},{<<"ComparisonOperator">>, <<"EQ">>}] }
                             ]
                     }]
                 ,extract_fields('scan',[{<<"name">>,<<"Jo">>}, {<<"surname">>,<<"*K">>}],[])),
-                
+
     ?assertEqual([{<<"AttributesToGet">>,[<<"name">>, <<"id">>]},
                     {<<"ScanFilter">>,[
                             {<<"name">>, [{<<"AttributeValueList">>, [[{<<"S">>, <<"Jo">>}]]},{<<"ComparisonOperator">>, <<"CONTAINS">>}]}
                             ]
                     }]
                 ,extract_fields('scan',[{<<"fields">>,<<"name,id">>}, {<<"name">>,<<"*Jo">>}],[])),
-                
+
     ?assertEqual([{<<"AttributesToGet">>,[<<"name">>, <<"id">>]},
                     {<<"ScanFilter">>,[
                             {<<"surname">>, [{<<"AttributeValueList">>, [[{<<"S">>, <<"K">>}]]},{<<"ComparisonOperator">>, <<"CONTAINS">>}]},
@@ -469,7 +514,7 @@ extract_fields_test() ->
                             ]
                     }]
                 ,extract_fields('scan',[{<<"name">>,<<"Jo">>}, {<<"fields">>,<<"name,id">>}, {<<"surname">>,<<"*K">>}],[])),
-                
+
     ?assertEqual([{<<"AttributesToGet">>,[<<"name">>, <<"id">>]},
                     {<<"Limit">>,2},
                     {<<"ScanFilter">>,[
@@ -477,14 +522,14 @@ extract_fields_test() ->
                             ]
                     }]
                 ,extract_fields('scan',[{<<"name">>,<<"Jo">>}, {<<"fields">>,<<"name,id">>}, {<<"limit">>,<<"2">>}],[])),
-                
+
     ?assertEqual([{<<"ExclusiveStartKey">>,
                           [{"RangeKeyElement",{"N","250"}},
                            {"HashKeyElement",{"S","Riley"}}]
                     }
                  ]
                 ,extract_fields('scan',[{<<"offset">>, <<"(HashKeyElement=S:Riley,RangeKeyElement=N:250)">>}],[])),
-                
+
     ?assertEqual([{<<"Limit">>,2},
                     {<<"ExclusiveStartKey">>,
                           [{"RangeKeyElement",{"N","250"}},
@@ -493,7 +538,7 @@ extract_fields_test() ->
                     ]
                 ,extract_fields('scan',[{<<"limit">>,<<"2">>}
                     ,{<<"offset">>, <<"(HashKeyElement=S:Riley,RangeKeyElement=N:250)">>}],[])),
-                
+
     ?assertEqual([{<<"AttributesToGet">>,[<<"name">>, <<"id">>]},
                     {<<"Limit">>,2},
                     {<<"ExclusiveStartKey">>,
@@ -503,7 +548,7 @@ extract_fields_test() ->
                  ]
                 ,extract_fields('scan',[{<<"fields">>,<<"name,id">>}, {<<"limit">>,<<"2">>}
                     ,{<<"offset">>, <<"(HashKeyElement=S:Riley,RangeKeyElement=N:250)">>}],[])),
-                    
+
     ?assertEqual([{<<"AttributesToGet">>,[<<"name">>, <<"id">>]},
                     {<<"Limit">>,2},
                     {<<"ExclusiveStartKey">>,
@@ -516,8 +561,8 @@ extract_fields_test() ->
                     }]
                 ,extract_fields('scan',[{<<"name">>,<<"Jo">>}, {<<"fields">>,<<"name,id">>}, {<<"limit">>,<<"2">>},
                       {<<"offset">>, <<"(HashKeyElement=S:Riley,RangeKeyElement=N:250)">>}],[])).
-                      
-extract_items_test() ->                      
+
+extract_items_test() ->
     ?assertEqual(	[[{<<"role">>,[{<<"S">>,<<"administrator">>}]},
                       {<<"email">>,[{<<"S">>,<<"admin@test.com">>}]},
                       {<<"lastName">>,[{<<"S">>,<<"admin">>}]},
@@ -539,8 +584,8 @@ extract_items_test() ->
                    [{<<"HashKeyElement">>,[{<<"N">>,<<"2">>}]}]},
                   {<<"ScannedCount">>,1}
                  ])).
-                 
-                 
+
+
 
 environment_mockup_test() ->
     application:set_env('rest2ddb', 'aws_tables', rest2ddb_utils_mockups:environment_mockup('aws_tables')),
@@ -553,5 +598,5 @@ environment_mockup_test() ->
                     {aws_base_attribute,<<"id">>,number},
                     {aws_base_attribute,undefined,undefined}
                  }], table_details(<<"job">>)).
-    
--endif.    
+
+-endif.
