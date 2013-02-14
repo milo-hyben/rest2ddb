@@ -28,51 +28,52 @@ DELETE - Not implemented yet
 
 Prerequisites:
 
-	erlang installed
-	rebar installed
+erlang installed
+
+rebar installed
 
 How to compile:
 
-%% get dependencies
+Get dependencies
 
 	rebar get-deps
 
-%% compile:
+Compile:
 
 	rebar compile
 
-%% run unit tests:
+Run unit tests:
 
 	rebar eunit skip_deps=true
 
 Example of use:
 
 
-%% start erlang in the root project folder
+Start erlang in the root project folder
 
 	erl -pa ebin deps/*/ebin
 
-%% start required modules
+Start required modules
 
 	'ok' = inets:start().
 	'ok' = ssl:start().
 	'ok' = application:start(ibrowse).
 
 
-%% Replace keys with your AWS ones, region is currently being ignored it is set to us-east-1 by default
+Replace keys with your AWS ones, region is currently being ignored it is set to us-east-1 by default
 
 	'ok' = rest2ddb:init("AccessKeyId", "SecretAccessKey", 900, "us-east-1").
 
 
-%% create table in DynamoDB, and add one record
+Create table in DynamoDB, and add one record
 
 	{ok, _} = ddb:create_table(<<"user">>, ddb:key_type(<<"user_id">>, 'number'), 1, 1).
 
 
-%% Wait approximately 30 seconds to get table created on AWS DynamoDB
+Wait approximately 30 seconds to get table created on AWS DynamoDB
 
 
-%% You should log into your AWS console and check if table "user" is ACTIVE before proceeding to the next step
+You should log into your AWS console and check if table "user" is ACTIVE before proceeding to the next step
 
 	{ok, _} = ddb:put(<<"user">>, [
 			{<<"user_id">>, <<"1">>, 'number'},
@@ -81,41 +82,37 @@ Example of use:
 		  {<<"lastName">>, <<"Citizen">>, 'string'}
 	  ]).
 
-%% Call this only if you change any of the DynamoDB tables schema
+Call this only if you change any of the DynamoDB tables schema
 
 	'ok' = rest2ddb:reload_schema().
 
 
-%% now you are ready to make your first GET call
+Now you are ready to make your first GET call
 
-%% GET /user/1?fields=firstName,lastName,email
-
+	%% GET /user/1?fields=firstName,lastName,email
 	Url = <<"user/1?fields=firstname,lastname">>.
 	Path = rest2ddb:extract_path(Url).
 	Qs	= rest2ddb:extract_query(Url).
 	rest2ddb:get(Path, Qs).
 
 
-%% the same as above, except no filter on fields and pass URL path already splitted into the list
+The same as above, except no filter on fields and pass URL path already splitted into the list
 
-%% GET /user/1
-
+	%% GET /user/1
 	rest2ddb:get([<<"user">>,<<"1">>], []).
 
 
-%% get me all users with firstName=John
+Get me all users with firstName=John
 
-%% GET /user?firstName=John
-
+	%% GET /user?firstName=John
 	rest2ddb:get([<<"user">>,<<"1">>], [{<<"firstName">>,<<"John">>}]).
 
-%% get me all users whith firstName containing 'J'
+Get me all users whith firstName containing 'J'
 
-%% GET /user?firstName=*J
-
+	%% GET /user?firstName=*J
 	rest2ddb:get([<<"user">>,<<"1">>], [{<<"firstName">>,<<"*J">>}]).
 
 
-%% When done, do not forget to remove your table from DynamoDB so you are not charged
+When done, do not forget to remove your table from DynamoDB so you are not charged
 
 	ddb:remove_table(<<"user">>).
