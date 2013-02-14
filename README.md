@@ -107,12 +107,12 @@ Get me all users with firstName=John
 	%% GET /user?firstName=John
 	rest2ddb:get([<<"user">>,<<"1">>], [{<<"firstName">>,<<"John">>}]).
 
-Get me all users whith firstName containing 'J'
+Get me all users with firstName containing 'J'
 
 	%% GET /user?firstName=*J
 	rest2ddb:get([<<"user">>,<<"1">>], [{<<"firstName">>,<<"*J">>}]).
 
 
-When done, do not forget to remove your table from DynamoDB so you are not charged
+When done, do not forget to remove your table from DynamoDB when not needed anymore, so you are not charged for resources you do not need.
 
 	ddb:remove_table(<<"user">>).
