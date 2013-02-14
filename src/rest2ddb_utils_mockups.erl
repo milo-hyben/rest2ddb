@@ -1,5 +1,5 @@
-%% @author milo
-%% @doc @todo Add description to bto_resource_handler.
+%% @author milo hyben
+%% @doc REST to DynamoDB interface - mockups.
 
 -module(rest2ddb_utils_mockups).
 
@@ -11,6 +11,7 @@
 		ddb_get_mockup/3,
 		ddb_scan_mockup/2,
 		ddb_find_mockup/3,
+		ddb_delete_mockup/3,
 		ddb_key_value_mockup/2,
 		ddb_describe_table/1,
 		ddb_tables/0,
@@ -197,6 +198,9 @@ ddb_find_mockup(<<"task">>, {<<"1">>, 'number'}, {'equal', 'number', [<<"2">>]})
 		]}
 	]
 }.
+
+ddb_delete_mockup(<<"user">>,[{<<"Key">>,[{<<"HashKeyElement">>,[{<<"N">>,<<"1">>}]}]}],'none') ->
+	{ok,[{<<"ConsumedCapacityUnits">>,1.0}]}.
 
 
 type('string') -> <<"S">>;
