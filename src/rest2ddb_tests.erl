@@ -28,6 +28,9 @@ rest2ddb_test_() ->
 			meck:expect(ddb, get,
                  fun rest2ddb_utils_mockups:ddb_get_mockup/3
                  ),
+      meck:expect(ddb, delete,
+                 fun rest2ddb_utils_mockups:ddb_delete_mockup/3
+                 ),
 			meck:expect(ddb, key_value,
                  fun rest2ddb_utils_mockups:ddb_key_value_mockup/2
                  ),
@@ -53,27 +56,27 @@ rest2ddb_test_() ->
 
    	{"init_tables",
     	fun() ->
-			?assertEqual( ok, rest2ddb:init("AccessKeyId", "SecretAccessKey", 100, "Region")),
-			?assertEqual({ok,[<<"user">>,<<"task">>]}, application:get_env('rest2ddb', 'aws_tables')),
-			?assertEqual({ok,[rest2ddb_utils_mockups:table_key_info("task.email, job_id")
+        ?assertEqual( ok, rest2ddb:init("AccessKeyId", "SecretAccessKey", 100, "Region")),
+        ?assertEqual({ok,[<<"user">>,<<"task">>]}, application:get_env('rest2ddb', 'aws_tables')),
+        ?assertEqual({ok,[rest2ddb_utils_mockups:table_key_info("task.email, job_id")
 							 ,rest2ddb_utils_mockups:table_key_info("user.email")]}
 						 , application:get_env('rest2ddb', 'aws_tables_details')),
    			?assert(meck:validate(ddb)),
-            ?assert(meck:validate(ddb_iam))
+        ?assert(meck:validate(ddb_iam))
     	end
    	},
 
    	{"get",
     	fun() ->
 			%% set environment / global values
-            application:set_env('rest2ddb', 'aws_tables', rest2ddb_utils_mockups:environment_mockup('aws_tables')),
-			application:set_env('rest2ddb', 'aws_tables_details',
+        application:set_env('rest2ddb', 'aws_tables', rest2ddb_utils_mockups:environment_mockup('aws_tables')),
+  			application:set_env('rest2ddb', 'aws_tables_details',
 								[
 									rest2ddb_utils_mockups:table_key_info("user.id"),
 									rest2ddb_utils_mockups:table_key_info("task.user_id, job_id")
 								]),
 
-			?assertEqual(	{ok,[[
+  			?assertEqual(	{ok,[[
 									{<<"user_id">>,[{<<"N">>,<<"1">>}]},
 									{<<"job_id">>,[{<<"N">>,<<"2">>}]},
 									{<<"description">>,[{<<"S">>,<<"My Task">>}]}
@@ -84,19 +87,33 @@ rest2ddb_test_() ->
 							[{<<"fields">>,<<"user_id,job_id,description">>}]
 							) ),
    			?assert(meck:validate(ddb)),
-            ?assert(meck:validate(ddb_iam))
-
+        ?assert(meck:validate(ddb_iam))
     	end
    	},
+
+    {"delete",
+      fun() ->
+      %% set environment / global values
+        application:set_env('rest2ddb', 'aws_tables', rest2ddb_utils_mockups:environment_mockup('aws_tables')),
+        application:set_env('rest2ddb', 'aws_tables_details',
+                [
+                  rest2ddb_utils_mockups:table_key_info("user.id"),
+                  rest2ddb_utils_mockups:table_key_info("task.user_id, job_id")
+                ]),
+
+        ?assertEqual('ok', rest2ddb:delete([<<"user">>, <<"1">>],[]) ),
+        ?assert(meck:validate(ddb)),
+        ?assert(meck:validate(ddb_iam))
+      end
+    },
+
 
     {"extracts",
       fun() ->
         ?assertEqual([{<<"fields">>,<<"firstname,lastname">>}], rest2ddb:extract_query(<<"user/1?fields=firstname,lastname">>)),
         ?assertEqual([<<"user">>,<<"1">>], rest2ddb:extract_path(<<"user/1?fields=firstname,lastname">>))
       end
-    },
-
-
+    }
 
 	]
 }.
