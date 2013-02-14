@@ -15,15 +15,13 @@ Working demo is in progress using elli web framework (git://github.com/knutin/el
 Supported REST operations:
 
 
-GET
+GET, DELETE
 
 PUT - Not implemented yet
 
 POST - Not implemented yet
 
 PATCH - Not implemented yet
-
-DELETE - Not implemented yet
 
 
 Prerequisites:
@@ -111,6 +109,11 @@ Get me all users with firstName containing 'J'
 
 	%% GET /user?firstName=*J
 	rest2ddb:get([<<"user">>,<<"1">>], [{<<"firstName">>,<<"*J">>}]).
+
+
+Delete the user
+	%% DELETE /user/1
+	rest2ddb:delete([<<"user">>,<<"1">>], []).
 
 
 When done, do not forget to remove your table from DynamoDB when not needed anymore, so you are not charged for resources you do not need.
