@@ -112,6 +112,7 @@ Get me all users with firstName containing 'J'
 
 
 Delete the user
+
 	%% DELETE /user/1
 	rest2ddb:delete([<<"user">>,<<"1">>], []).
 
