@@ -72,21 +72,42 @@ put_record([], _, _) -> {error, []};
 put_record([{TableName, KeyValues} | _T], Parameters, Attributes) ->
 	BinTableName = binary:list_to_bin(TableName),
 	Keys = table_keys(BinTableName),
-	{error, []}. %% TODO
+	case length(Keys) == length(KeyValues) of
+		true  ->
+				%% we have enough info to use get/find
+				put_item(BinTableName, Keys, convert_to_bin(KeyValues, []), Attributes);
+		false ->
+				% item could not be located as there is not enough information about the primary key
+				{error, []} %% TODO
+	end.
 
 %% post_record
 post_record([], _, _) -> {error, []};
 post_record([{TableName, KeyValues} | _T], Parameters, Attributes) ->
 	BinTableName = binary:list_to_bin(TableName),
 	Keys = table_keys(BinTableName),
-	{error, []}. %% TODO
+	case length(Keys) == length(KeyValues) of
+		true  ->
+				%% we have enough info to use get/find
+				put_item(BinTableName, Keys, convert_to_bin(KeyValues, []), Attributes);
+		false ->
+				% TODO check if any of the hash/range keys can be auto incremental
+				{error, []} %% TODO
+	end.
 
 %% patch_record
 patch_record([], _, _) -> {error, []};
 patch_record([{TableName, KeyValues} | _T], Parameters, Attributes) ->
 	BinTableName = binary:list_to_bin(TableName),
 	Keys = table_keys(BinTableName),
-	{error, []}. %% TODO
+	case length(Keys) == length(KeyValues) of
+		true  ->
+				%% we have enough info to use get/find
+				patch_item(BinTableName, Keys, convert_to_bin(KeyValues, []), Attributes);
+		false ->
+				% item could not be located as there is not enough information about the primary key
+				{error, []} %% TODO
+	end.
 
 %% delete_record
 delete_record([], _) -> {error, []};
@@ -101,6 +122,7 @@ delete_record([{TableName, KeyValues} | _T], Parameters) ->
 				% item could not be located as there is not enough information about the primary key
 				{error, []} %% TODO
 	end.
+
 
 pattern_match_keys(_Pattern, [], Result) -> Result;
 pattern_match_keys(Pattern, [{K, V} | T], {Max, MaxLen, MaxPattern, MaxResult}) ->
@@ -347,11 +369,9 @@ get_item('get', TableName, Keys, KeyValues, _Parameters) when (length(Keys) == 2
 	end.
 
 % delete_item
-delete_item(TableName, Keys, KeyValues, Parameters) when (length(Keys) == 1) ->
+delete_item(TableName, Keys, KeyValues, _Parameters) when (length(Keys) == 1) ->
 	[{_KeyName,KeyType}] = Keys,
 	[{_KeyName,KeyValue}] = KeyValues,
-	%% P = extract_fields('get', Parameters,[]),
-	% TODO implement conditionl delete
 	case ddb:delete(TableName, ddb:key_value(KeyValue, KeyType), 'none') of
 		{ok, _} -> ok;
 		_ -> {error, []}
@@ -359,8 +379,44 @@ delete_item(TableName, Keys, KeyValues, Parameters) when (length(Keys) == 1) ->
 delete_item(TableName, Keys, KeyValues, _Parameters) when (length(Keys) == 2) ->
 	[{_RangeKeyName,RangeKeyType}, {_HashKeyName,HashKeyType}] = Keys,
 	[{_RangeKeyName,RangeKeyValue}, {_HashKeyName,HashKeyValue}] = KeyValues,
-	case ddb:delete(TableName, {HashKeyValue, HashKeyType}, {'equal', RangeKeyType, [RangeKeyValue]}) of
-		{ok,Results} -> {ok, extract_items(Results)};
+	case ddb:delete(TableName, ddb:key_value(HashKeyValue, HashKeyType, RangeKeyType, RangeKeyValue), 'none') of
+		{ok, _} -> ok;
+		_ -> {error, []}
+	end.
+
+% put_item
+put_item(TableName, Keys, KeyValues, Attributes) when (length(Keys) == 1) ->
+	[{KeyName,KeyType}] = Keys,
+	[{_KeyName,KeyValue}] = KeyValues,
+	Att = [{KeyName, KeyValue, KeyType}] ++ Attributes,
+	case ddb:put(TableName, Att, 'all_new') of
+		{ok, Results} -> {ok, extract_items(Results)};
+		_ -> {error, []}
+	end;
+
+put_item(TableName, Keys, KeyValues, Attributes) when (length(Keys) == 2) ->
+	[{RangeKeyName,RangeKeyType}, {HashKeyName,HashKeyType}] = Keys,
+	[{_RangeKeyName,RangeKeyValue}, {_HashKeyName,HashKeyValue}] = KeyValues,
+	Att = [{RangeKeyName, RangeKeyValue, RangeKeyType}, {HashKeyName, HashKeyValue, HashKeyType}] ++ Attributes,
+	case ddb:put(TableName, Att, 'all_new') of
+		{ok, Results} -> {ok, extract_items(Results)};
+		_ -> {error, []}
+	end.
+
+% patch_item
+patch_item(TableName, Keys, KeyValues, Attributes) when (length(Keys) == 1) ->
+	[{KeyName,KeyType}] = Keys,
+	[{_KeyName,KeyValue}] = KeyValues,
+	case ddb:update(TableName, ddb:key_value(KeyValue, KeyType), Attributes, 'all_new') of
+		{ok, Results} -> {ok, extract_items(Results)};
+		_ -> {error, []}
+	end;
+
+patch_item(TableName, Keys, KeyValues, Attributes) when (length(Keys) == 2) ->
+	[{_RangeKeyName,RangeKeyType}, {_HashKeyName,HashKeyType}] = Keys,
+	[{_RangeKeyName,RangeKeyValue}, {_HashKeyName,HashKeyValue}] = KeyValues,
+	case ddb:update(TableName, ddb:key_value(HashKeyValue, HashKeyType, RangeKeyType, RangeKeyValue), Attributes, 'all_new') of
+		{ok, Results} -> {ok, extract_items(Results)};
 		_ -> {error, []}
 	end.
 

@@ -12,23 +12,11 @@ Ideally you want to use this module within your favourite Erlang web framework.
 Working demo is in progress using elli web framework (git://github.com/knutin/elli.git) and it will be posted on github.
 
 
-Supported REST operations:
+Supported REST operations: GET, PUT, POST, PATCH, DELETE
 
 
-GET, DELETE
+Prerequisites: erlang, rebar
 
-PUT - Not implemented yet
-
-POST - Not implemented yet
-
-PATCH - Not implemented yet
-
-
-Prerequisites:
-
-erlang installed
-
-rebar installed
 
 How to compile:
 
