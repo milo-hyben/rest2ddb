@@ -21,17 +21,20 @@ get_resource(Resource, Parameters) ->
 	MatchedKeys = match_resource_to_keys(Resource, Parameters, []),
 	get_record(MatchedKeys, Parameters).
 
-put_resource(Resource, Parameters, Attributes) ->
-	MatchedKeys = match_resource_to_keys(Resource, Parameters, []),
-	put_record(MatchedKeys, Parameters, Attributes).
+put_resource(Resource, Parameters, Body) ->
+	{Attributes, ConvertedBody} = extract_from_json(string:tokens(binary:bin_to_list(Body),":,{}][\""), 'put', Parameters, []),
+	MatchedKeys = match_resource_to_keys(Resource, Attributes, []),
+	put_record(MatchedKeys, Parameters, ConvertedBody).
 
-post_resource(Resource, Parameters, Attributes) ->
-	MatchedKeys = match_resource_to_keys(Resource, Parameters, []),
-	post_record(MatchedKeys, Parameters, Attributes).
+post_resource(Resource, Parameters, Body) ->
+	{Attributes, ConvertedBody} = extract_from_json(string:tokens(binary:bin_to_list(Body),":,{}][\""), 'none', Parameters, []),
+	MatchedKeys = match_resource_to_keys(Resource, Attributes, []),
+	post_record(MatchedKeys, Parameters, ConvertedBody).
 
-patch_resource(Resource, Parameters, Attributes) ->
-	MatchedKeys = match_resource_to_keys(Resource, Parameters, []),
-	patch_record(MatchedKeys, Parameters, Attributes).
+patch_resource(Resource, Parameters, Body) ->
+	{Attributes, ConvertedBody} = extract_from_json(string:tokens(binary:bin_to_list(Body),":,{}][\""), 'put', Parameters, []),
+	MatchedKeys = match_resource_to_keys(Resource, Attributes, []),
+	patch_record(MatchedKeys, Parameters, ConvertedBody).
 
 delete_resource(Resource, Parameters) ->
 	MatchedKeys = match_resource_to_keys(Resource, Parameters, []),
@@ -77,23 +80,16 @@ put_record([{TableName, KeyValues} | _T], Parameters, Attributes) ->
 				%% we have enough info to use get/find
 				put_item(BinTableName, Keys, convert_to_bin(KeyValues, []), Attributes);
 		false ->
-				% item could not be located as there is not enough information about the primary key
-				{error, []} %% TODO
+				% item could not be located as there is not enough information about the primary key,
+				% use post_item, basicaly create a new item
+				post_item(BinTableName, Attributes)
 	end.
 
 %% post_record
-post_record([], _, _) -> {error, []};
-post_record([{TableName, KeyValues} | _T], Parameters, Attributes) ->
+post_record	([], _, _) -> {error, []};
+post_record	([{TableName, KeyValues} | _T], Parameters, Attributes) ->
 	BinTableName = binary:list_to_bin(TableName),
-	Keys = table_keys(BinTableName),
-	case length(Keys) == length(KeyValues) of
-		true  ->
-				%% we have enough info to use get/find
-				put_item(BinTableName, Keys, convert_to_bin(KeyValues, []), Attributes);
-		false ->
-				% TODO check if any of the hash/range keys can be auto incremental
-				{error, []} %% TODO
-	end.
+	post_item(BinTableName, Attributes).
 
 %% patch_record
 patch_record([], _, _) -> {error, []};
@@ -103,7 +99,7 @@ patch_record([{TableName, KeyValues} | _T], Parameters, Attributes) ->
 	case length(Keys) == length(KeyValues) of
 		true  ->
 				%% we have enough info to use get/find
-				patch_item(BinTableName, Keys, convert_to_bin(KeyValues, []), Attributes);
+				put_item(BinTableName, Keys, convert_to_bin(KeyValues, []), Attributes);
 		false ->
 				% item could not be located as there is not enough information about the primary key
 				{error, []} %% TODO
@@ -352,74 +348,62 @@ get_item('scan', TableName, _Keys, KeyValues, Parameters) ->
 		{ok,Results} -> {ok, extract_items(Results)};
 		_ -> {error, []}
 	end;
-get_item('get', TableName, Keys, KeyValues, Parameters) when (length(Keys) == 1) ->
-	[{_KeyName,KeyType}] = Keys,
-	[{_KeyName,KeyValue}] = KeyValues,
+get_item('get', TableName, [{_KeyName,KeyType}], [{_KeyName,KeyValue}], Parameters) ->
 	P = extract_fields('get', Parameters,[]),
 	case ddb:get(TableName, ddb:key_value(KeyValue, KeyType), P) of
 		{ok, Results} -> {ok, extract_items(Results)};
 		_ -> {error, []}
 	end;
-get_item('get', TableName, Keys, KeyValues, _Parameters) when (length(Keys) == 2) ->
-	[{_RangeKeyName,RangeKeyType}, {_HashKeyName,HashKeyType}] = Keys,
-	[{_RangeKeyName,RangeKeyValue}, {_HashKeyName,HashKeyValue}] = KeyValues,
+get_item('get', TableName, [{_RangeKeyName,RangeKeyType}, {_HashKeyName,HashKeyType}],
+				[{_RangeKeyName,RangeKeyValue}, {_HashKeyName,HashKeyValue}], _Parameters) ->
 	case ddb:find(TableName, {HashKeyValue, HashKeyType}, {'equal', RangeKeyType, [RangeKeyValue]}) of
 		{ok,Results} -> {ok, extract_items(Results)};
 		_ -> {error, []}
 	end.
 
 % delete_item
-delete_item(TableName, Keys, KeyValues, _Parameters) when (length(Keys) == 1) ->
-	[{_KeyName,KeyType}] = Keys,
-	[{_KeyName,KeyValue}] = KeyValues,
+delete_item(TableName, [{_KeyName,KeyType}], [{_KeyName,KeyValue}], [{ParamName, ParamValue}]) ->
+	case ddb:cond_delete(TableName, ddb:key_value(KeyValue, KeyType), {'exists', ParamName, ParamValue, 'string'}, 'none') of
+		{ok, _} -> ok;
+		_ -> {error, []}
+	end;
+delete_item(TableName, [{_KeyName,KeyType}], [{_KeyName,KeyValue}], []) ->
 	case ddb:delete(TableName, ddb:key_value(KeyValue, KeyType), 'none') of
 		{ok, _} -> ok;
 		_ -> {error, []}
 	end;
-delete_item(TableName, Keys, KeyValues, _Parameters) when (length(Keys) == 2) ->
-	[{_RangeKeyName,RangeKeyType}, {_HashKeyName,HashKeyType}] = Keys,
-	[{_RangeKeyName,RangeKeyValue}, {_HashKeyName,HashKeyValue}] = KeyValues,
+delete_item(TableName, [{_RangeKeyName,RangeKeyType}, {_HashKeyName,HashKeyType}],
+	[{_RangeKeyName,RangeKeyValue}, {_HashKeyName,HashKeyValue}], [{ParamName, ParamValue}])  ->
+	case ddb:cond_delete(TableName, ddb:key_value(HashKeyValue, HashKeyType, RangeKeyType, RangeKeyValue), {'exists', ParamName, ParamValue, 'string'}, 'none') of
+		{ok, _} -> ok;
+		_ -> {error, []}
+	end;
+delete_item(TableName, [{_RangeKeyName,RangeKeyType}, {_HashKeyName,HashKeyType}],
+	[{_RangeKeyName,RangeKeyValue}, {_HashKeyName,HashKeyValue}], [])  ->
 	case ddb:delete(TableName, ddb:key_value(HashKeyValue, HashKeyType, RangeKeyType, RangeKeyValue), 'none') of
 		{ok, _} -> ok;
 		_ -> {error, []}
 	end.
 
 % put_item
-put_item(TableName, Keys, KeyValues, Attributes) when (length(Keys) == 1) ->
-	[{KeyName,KeyType}] = Keys,
-	[{_KeyName,KeyValue}] = KeyValues,
-	Att = [{KeyName, KeyValue, KeyType}] ++ Attributes,
-	case ddb:put(TableName, Att, 'all_new') of
-		{ok, Results} -> {ok, extract_items(Results)};
-		_ -> {error, []}
-	end;
-
-put_item(TableName, Keys, KeyValues, Attributes) when (length(Keys) == 2) ->
-	[{RangeKeyName,RangeKeyType}, {HashKeyName,HashKeyType}] = Keys,
-	[{_RangeKeyName,RangeKeyValue}, {_HashKeyName,HashKeyValue}] = KeyValues,
-	Att = [{RangeKeyName, RangeKeyValue, RangeKeyType}, {HashKeyName, HashKeyValue, HashKeyType}] ++ Attributes,
-	case ddb:put(TableName, Att, 'all_new') of
-		{ok, Results} -> {ok, extract_items(Results)};
-		_ -> {error, []}
-	end.
-
-% patch_item
-patch_item(TableName, Keys, KeyValues, Attributes) when (length(Keys) == 1) ->
-	[{KeyName,KeyType}] = Keys,
-	[{_KeyName,KeyValue}] = KeyValues,
+put_item(TableName, [{KeyName,KeyType}] , [{_KeyName,KeyValue}], Attributes) ->
 	case ddb:update(TableName, ddb:key_value(KeyValue, KeyType), Attributes, 'all_new') of
 		{ok, Results} -> {ok, extract_items(Results)};
 		_ -> {error, []}
 	end;
-
-patch_item(TableName, Keys, KeyValues, Attributes) when (length(Keys) == 2) ->
-	[{_RangeKeyName,RangeKeyType}, {_HashKeyName,HashKeyType}] = Keys,
-	[{_RangeKeyName,RangeKeyValue}, {_HashKeyName,HashKeyValue}] = KeyValues,
+put_item(TableName, [{RangeKeyName,RangeKeyType}, {HashKeyName,HashKeyType}],
+			[{_RangeKeyName,RangeKeyValue}, {_HashKeyName,HashKeyValue}], Attributes) ->
 	case ddb:update(TableName, ddb:key_value(HashKeyValue, HashKeyType, RangeKeyType, RangeKeyValue), Attributes, 'all_new') of
 		{ok, Results} -> {ok, extract_items(Results)};
 		_ -> {error, []}
 	end.
 
+% post_item
+post_item(TableName, Attributes) ->
+	case ddb:put(TableName, Attributes) of
+		{ok, Results} -> {ok, extract_items(Results)};
+		_ -> {error, []}
+	end.
 
 %% extract fields
 extract_fields(_, [], []) -> [];
@@ -496,6 +480,24 @@ extract_names([{KeyName,_} | H], Acc) ->
 extract_names([_ | H], Acc) ->
 	extract_names(H, Acc).
 
+extract_type(<<"S">>) -> 'string';
+extract_type(<<"N">>) -> 'number';
+extract_type(<<"SS">>) -> ['string'];
+extract_type(<<"NS">>) -> ['number'].
+
+extract_from_json([Name, Type, Value | T], 'none', AccParams, AccBody) ->
+	extract_from_json(T,
+		'none',
+		[{binary:list_to_bin(Name), binary:list_to_bin(Value)}] ++ AccParams,
+		[{binary:list_to_bin(Name), binary:list_to_bin(Value), extract_type(binary:list_to_bin(Type)) }] ++ AccBody
+		);
+extract_from_json([Name, Type, Value | T], Action, AccParams, AccBody) ->
+	extract_from_json(T,
+		Action,
+		[{binary:list_to_bin(Name), binary:list_to_bin(Value)}] ++ AccParams,
+		[{binary:list_to_bin(Name), binary:list_to_bin(Value), extract_type(binary:list_to_bin(Type)), Action}] ++ AccBody
+		);
+extract_from_json(_, _, AccParams, AccBody) -> {AccParams, AccBody}.
 
 %% unit tests
 -ifdef(TEST).
@@ -544,6 +546,24 @@ extract_operator_test() ->
 
 strings_to_bins_test() ->
     ?assertEqual([<<"name">>,<<"id">>], strings_to_bins(["name","id"])).
+
+extract_from_json_test() ->
+		Body = <<"[{\"role\":{\"S\":\"user\"},\"email\":{\"S\":\"test@test.com\"},\"lastName\":{\"S\":\"lasttest\"},\"firstName\":{\"S\":\"firsttest\"},\"user_id\":{\"N\":\"1\"},\"atts\":{\"S\":\"some extra stuff\"}}]">>,
+		{Attributes, ConvertedBody} = extract_from_json(string:tokens(binary:bin_to_list(Body),":,{}][\""), 'none', [], []),
+		?assertEqual([{<<"atts">>, <<"some extra stuff">>},
+									{<<"user_id">>, <<"1">>},
+									{<<"firstName">>, <<"firsttest">>},
+									{<<"lastName">>, <<"lasttest">>},
+									{<<"email">>, <<"test@test.com">>},
+									{<<"role">>, <<"user">>}]
+									, Attributes),
+		?assertEqual([{<<"atts">>, <<"some extra stuff">>, 'string'},
+									{<<"user_id">>, <<"1">>, 'number'},
+									{<<"firstName">>, <<"firsttest">>, 'string'},
+									{<<"lastName">>, <<"lasttest">>, 'string'},
+									{<<"email">>, <<"test@test.com">>, 'string'},
+									{<<"role">>, <<"user">>, 'string'}]
+									, ConvertedBody).
 
 extract_offset_key_test() ->
     ?assertEqual( [{"RangeKeyElement",{"N","250"}},{"HashKeyElement",{"S","Riley"}}], extract_offset_key("(HashKeyElement=S:Riley,RangeKeyElement=N:250)")).

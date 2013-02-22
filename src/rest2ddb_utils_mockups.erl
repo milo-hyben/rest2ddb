@@ -12,6 +12,9 @@
 		ddb_scan_mockup/2,
 		ddb_find_mockup/3,
 		ddb_delete_mockup/3,
+		ddb_cond_delete_mockup/4,
+		ddb_put_mockup/2,
+		ddb_update_mockup/4,
 		ddb_key_value_mockup/2,
 		ddb_describe_table/1,
 		ddb_tables/0,
@@ -201,6 +204,45 @@ ddb_find_mockup(<<"task">>, {<<"1">>, 'number'}, {'equal', 'number', [<<"2">>]})
 
 ddb_delete_mockup(<<"user">>,[{<<"Key">>,[{<<"HashKeyElement">>,[{<<"N">>,<<"1">>}]}]}],'none') ->
 	{ok,[{<<"ConsumedCapacityUnits">>,1.0}]}.
+
+ddb_cond_delete_mockup(<<"user">>,[{<<"Key">>,[{<<"HashKeyElement">>,[{<<"N">>,<<"3">>}]}]}], {'exists', <<"firstName">>, <<"Jack">>, 'string'}, 'none') ->
+	{ok,[{<<"ConsumedCapacityUnits">>,1.0}]};
+ddb_cond_delete_mockup(<<"user">>,[{<<"Key">>,[{<<"HashKeyElement">>,[{<<"N">>,<<"30">>}]}]}], {'exists', <<"firstName">>, <<"Jack">>, 'string'}, 'none') ->
+	{error,[{<<"__type">>,
+	     <<"com.amazonaws.dynamodb.v20111205#ConditionalCheckFailedException">>},
+	    {<<"message">>,<<"The conditional request failed">>}]}.
+
+ddb_put_mockup(<<"user">>,[
+                {<<"user_id">>, <<"3">>, 'number'},
+                {<<"name">>, <<"Jack">>, 'string'},
+                {<<"surname">>,<<"Citizen">>, 'string'},
+                {<<"email">>,<<"test@test.com">>, 'string'},
+                {<<"role">>,<<"user">>, 'string'}
+                ]) ->
+	{ok,[{<<"ConsumedCapacityUnits">>,1.0}]};
+ddb_put_mockup(<<"user">>,[
+								{<<"id">>, <<"1">>, 'number'},
+                {<<"firstName">>, <<"Jack">>, 'string'},
+                {<<"lastName">>,<<"Citizen">>, 'string'},
+                {<<"email">>,<<"test@test.com">>, 'string'},
+                {<<"role">>,<<"user">>, 'string'}
+                ]) ->
+	{ok,[{<<"ConsumedCapacityUnits">>,1.0}]}.
+
+ddb_update_mockup(<<"user">>,
+                    [{<<"Key">>,[{<<"HashKeyElement">>,[{<<"N">>,<<"3">>}]}]}],
+                    [{<<"firstName">>, <<"Jack">>, 'string', 'put'},{<<"name">>, 'delete'}],
+                    'none') ->
+  {ok,[{<<"ConsumedCapacityUnits">>,1.0}]};
+ddb_update_mockup(<<"user">>,
+										[{<<"Key">>,[{<<"HashKeyElement">>,[{<<"N">>,<<"3">>}]}]}],
+										[{<<"firstName">>, <<"Jack">>, 'string', 'put'}],
+										'all_new') ->
+	{ok,[	{<<"Attributes">>,
+      		[{<<"id">>,[{<<"N">>,<<"3">>}]},
+       		{<<"firstName">>,[{<<"S">>,<<"Jack">>}]}]
+       	},
+     		{<<"ConsumedCapacityUnits">>,1.0}]}.
 
 
 type('string') -> <<"S">>;
