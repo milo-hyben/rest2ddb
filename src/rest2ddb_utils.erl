@@ -364,24 +364,24 @@ get_item('get', TableName, [{_RangeKeyName,RangeKeyType}, {_HashKeyName,HashKeyT
 % delete_item
 delete_item(TableName, [{_KeyName,KeyType}], [{_KeyName,KeyValue}], [{ParamName, ParamValue}]) ->
 	case ddb:cond_delete(TableName, ddb:key_value(KeyValue, KeyType), {'exists', ParamName, ParamValue, 'string'}, 'none') of
-		{ok, _} -> ok;
+		{ok, _} -> {ok, []};
 		_ -> {error, []}
 	end;
 delete_item(TableName, [{_KeyName,KeyType}], [{_KeyName,KeyValue}], []) ->
 	case ddb:delete(TableName, ddb:key_value(KeyValue, KeyType), 'none') of
-		{ok, _} -> ok;
+		{ok, _} -> {ok, []};
 		_ -> {error, []}
 	end;
 delete_item(TableName, [{_RangeKeyName,RangeKeyType}, {_HashKeyName,HashKeyType}],
 	[{_RangeKeyName,RangeKeyValue}, {_HashKeyName,HashKeyValue}], [{ParamName, ParamValue}])  ->
 	case ddb:cond_delete(TableName, ddb:key_value(HashKeyValue, HashKeyType, RangeKeyType, RangeKeyValue), {'exists', ParamName, ParamValue, 'string'}, 'none') of
-		{ok, _} -> ok;
+		{ok, _} -> {ok, []};
 		_ -> {error, []}
 	end;
 delete_item(TableName, [{_RangeKeyName,RangeKeyType}, {_HashKeyName,HashKeyType}],
 	[{_RangeKeyName,RangeKeyValue}, {_HashKeyName,HashKeyValue}], [])  ->
 	case ddb:delete(TableName, ddb:key_value(HashKeyValue, HashKeyType, RangeKeyType, RangeKeyValue), 'none') of
-		{ok, _} -> ok;
+		{ok, _} -> {ok, []};
 		_ -> {error, []}
 	end.
 

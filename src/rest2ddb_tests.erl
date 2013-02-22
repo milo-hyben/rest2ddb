@@ -111,10 +111,10 @@ rest2ddb_test_() ->
                 ]),
 
         %% delete user, where user_id=1
-        ?assertEqual('ok', rest2ddb:delete([<<"user">>, <<"1">>],[]) ),
+        ?assertEqual({'ok',[]}, rest2ddb:delete([<<"user">>, <<"1">>],[]) ),
 
         %% delete all the tasks of user.user_id=1
-        ?assertEqual('ok', rest2ddb:delete([<<"user">>, <<"3">>] ,[{<<"firstName">>, <<"Jack">>}]) ),
+        ?assertEqual({'ok',[]}, rest2ddb:delete([<<"user">>, <<"3">>] ,[{<<"firstName">>, <<"Jack">>}]) ),
 
         %% delete should fail
         ?assertEqual({error,[]}, rest2ddb:delete([<<"user">>, <<"30">>] ,[{<<"firstName">>, <<"Jack">>}]) ),
