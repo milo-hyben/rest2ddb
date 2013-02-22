@@ -340,6 +340,11 @@ convert_to_bin([], Acc) -> Acc;
 convert_to_bin([{K, V} | T], Acc) ->
 	convert_to_bin(T, [{binary:list_to_bin(K), binary:list_to_bin(V)}] ++ Acc).
 
+convert_to_bin_single([], Acc) -> Acc;
+convert_to_bin_single([K | T], Acc) ->
+	convert_to_bin_single(T, [binary:list_to_bin(K)] ++ Acc).
+
+
 % get_item
 get_item('scan', TableName, _Keys, KeyValues, Parameters) ->
 	Params = KeyValues ++ Parameters,
@@ -480,22 +485,27 @@ extract_names([{KeyName,_} | H], Acc) ->
 extract_names([_ | H], Acc) ->
 	extract_names(H, Acc).
 
-extract_type(<<"S">>) -> 'string';
-extract_type(<<"N">>) -> 'number';
-extract_type(<<"SS">>) -> ['string'];
-extract_type(<<"NS">>) -> ['number'].
+extract_value_type(Name, Value, <<"S">>) -> {binary:list_to_bin(Name), binary:list_to_bin(Value), 'string'};
+extract_value_type(Name, Value, <<"N">>) -> {binary:list_to_bin(Name), binary:list_to_bin(Value), 'number'};
+extract_value_type(Name, Value, <<"SS">>) -> {binary:list_to_bin(Name), convert_to_bin_single(string:tokens(Value, ","), []), ['string']};
+extract_value_type(Name, Value, <<"NS">>) -> {binary:list_to_bin(Name), convert_to_bin_single(string:tokens(Value, ","), []), ['number']}.
+
+extract_value_type(Name, Value, <<"S">>, Action) -> {binary:list_to_bin(Name), binary:list_to_bin(Value), 'string', Action};
+extract_value_type(Name, Value, <<"N">>, Action) -> {binary:list_to_bin(Name), binary:list_to_bin(Value), 'number', Action};
+extract_value_type(Name, Value, <<"SS">>, Action) -> {binary:list_to_bin(Name), convert_to_bin_single(string:tokens(Value, ","), []), ['string'], Action};
+extract_value_type(Name, Value, <<"NS">>, Action) -> {binary:list_to_bin(Name), convert_to_bin_single(string:tokens(Value, ","), []), ['number'], Action}.
 
 extract_from_json([Name, Type, Value | T], 'none', AccParams, AccBody) ->
 	extract_from_json(T,
 		'none',
 		[{binary:list_to_bin(Name), binary:list_to_bin(Value)}] ++ AccParams,
-		[{binary:list_to_bin(Name), binary:list_to_bin(Value), extract_type(binary:list_to_bin(Type)) }] ++ AccBody
+		[extract_value_type(Name, Value, binary:list_to_bin(Type))] ++ AccBody
 		);
 extract_from_json([Name, Type, Value | T], Action, AccParams, AccBody) ->
 	extract_from_json(T,
 		Action,
 		[{binary:list_to_bin(Name), binary:list_to_bin(Value)}] ++ AccParams,
-		[{binary:list_to_bin(Name), binary:list_to_bin(Value), extract_type(binary:list_to_bin(Type)), Action}] ++ AccBody
+		[extract_value_type(Name, Value, binary:list_to_bin(Type), Action)] ++ AccBody
 		);
 extract_from_json(_, _, AccParams, AccBody) -> {AccParams, AccBody}.
 
